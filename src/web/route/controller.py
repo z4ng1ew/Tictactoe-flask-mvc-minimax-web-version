@@ -1,5 +1,4 @@
 import os
-from typing import Tuple
 from flask import Flask, request, jsonify, abort, send_from_directory
 from domain.service.interface import GameServiceInterface
 from web.mapper.mapper import GameWebMapper
@@ -7,35 +6,29 @@ from web.model.game_web import GameWeb
 
 
 def create_game_controller(service: GameServiceInterface) -> Flask:
-
     app = Flask(__name__)
-
+    static_dir = os.path.join(os.path.dirname(__file__), '..', 'static')
 
     def finish(domain_game):
         service.save_game_state(domain_game)
         return jsonify(GameWebMapper.domain_to_web(domain_game).to_dict()), 200
 
-
     @app.route('/')
     def serve_frontend():
-        static_dir = os.path.join(os.path.dirname(__file__), '..', 'static')
         return send_from_directory(static_dir, 'index.html')
 
     @app.route('/static/<path:filename>')
     def serve_static(filename):
-        static_dir = os.path.join(os.path.dirname(__file__), '..', 'static')
         return send_from_directory(static_dir, filename)
 
     @app.route('/game/<string:game_id>', methods=['POST'])
     def handle_game_move(game_id: str):
-
         data = request.get_json()
         if not data or not isinstance(data, dict):
             abort(400, description="Request body must be a valid JSON object")
 
         try:
-            web_game_input = GameWeb(**data)
-            domain_game = GameWebMapper.web_to_domain(web_game_input)
+            domain_game = GameWebMapper.web_to_domain(GameWeb(**data))
         except (KeyError, ValueError, TypeError) as e:
             abort(400, description=f"Invalid game: {str(e)}")
 
@@ -49,10 +42,7 @@ def create_game_controller(service: GameServiceInterface) -> Flask:
 
         r, c = service.get_next_move(domain_game)
         if r != -1 and domain_game.board.matrix[r][c] == 0:
-            domain_game.board.matrix[r][c] = 2 
-
-        if service.is_game_over(domain_game):
-            return finish(domain_game)
+            domain_game.board.matrix[r][c] = 2
 
         return finish(domain_game)
 

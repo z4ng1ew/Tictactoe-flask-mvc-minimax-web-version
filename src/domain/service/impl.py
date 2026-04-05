@@ -100,5 +100,5 @@ def check_winner(matrix: list) -> int:
         cells = [matrix[r][c] for r, c in line]
         if cells[0] != 0 and cells[0] == cells[1] == cells[2]:
             return cells[0]  
-        
+            
     return 0  

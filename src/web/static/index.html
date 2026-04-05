@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🎮 Крестики-Нолики</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .container {
+      background: white;
+      border-radius: 20px;
+      padding: 30px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      text-align: center;
+      max-width: 400px;
+      width: 100%;
+    }
+    h1 { color: #333; margin-bottom: 10px; font-size: 24px; }
+    #status {
+      margin: 15px 0;
+      padding: 10px;
+      background: #f8f9fa;
+      border-radius: 8px;
+      font-weight: 500;
+      color: #555;
+      font-size: 16px;
+    }
+    .board {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin: 20px auto;
+      max-width: 300px;
+    }
+    .cell {
+      aspect-ratio: 1;
+      background: #f8f9fa;
+      border: 3px solid #667eea;
+      border-radius: 12px;
+      font-size: 40px;
+      font-weight: bold;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      user-select: none;
+    }
+    .cell:hover:not(:disabled) { background: #e9ecef; transform: scale(1.05); }
+    .cell:disabled { cursor: not-allowed; }
+    .cell.x { color: #27ae60; background: #d4edda; }
+    .cell.o { color: #e74c3c; background: #f8d7da; }
+    .cell.winner {
+      animation: pulse 0.5s ease-in-out infinite;
+      background: #fff3cd;
+      border-color: #ffc107;
+      border-width: 4px;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.1); }
+    }
+    #newGame {
+      margin-top: 20px;
+      padding: 12px 30px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 25px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+    #newGame:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(102,126,234,0.4); }
+    #newGame:active { transform: translateY(0); }
+    .error { color: #e74c3c; background: #ffe6e6; border: 1px solid #e74c3c; }
+    .success { color: #27ae60; background: #d4edda; border: 1px solid #27ae60; }
+    .winner-text { color: #ffc107; font-weight: bold; font-size: 18px; }
+    #gameId {
+      margin-top: 15px;
+      font-size: 11px;
+      color: #999;
+      word-break: break-all;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎮 Крестики-Нолики</h1>
+    <div id="status">Загрузка...</div>
+    <div class="board" id="board"></div>
+    <button id="newGame">🔄 Новая игра</button>
+    <div id="gameId"></div>
+  </div>
+
+  <script>
+    const API_BASE = '';
+    let gameId = null;
+    let board = [];
+    let gameActive = true;
+    let mySymbol = 1; // 1 = X (игрок), 2 = O (компьютер)
+
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('newGame').onclick = startNewGame;
+      startNewGame();
+    });
+
+    function startNewGame() {
+      gameId = generateUUID();
+      board = Array(3).fill(null).map(() => Array(3).fill(0));
+      gameActive = true;
+      mySymbol = 1; // Всегда начинаем за X
+      renderBoard();
+      updateStatus('Твой ход (❌)', 'success');
+      document.getElementById('gameId').textContent = 'ID: ' + gameId.slice(0, 8) + '...';
+    }
+
+    function generateUUID() {
+      if (crypto?.randomUUID) return crypto.randomUUID();
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      });
+    }
+
+    function renderBoard() {
+      const container = document.getElementById('board');
+      container.innerHTML = '';
+      
+      for (let row = 0; row < 3; row++) {
+        for (let col = 0; col < 3; col++) {
+          const cell = document.createElement('div');
+          cell.className = 'cell';
+          cell.dataset.row = row;
+          cell.dataset.col = col;
+          
+          const val = board[row][col];
+          if (val === 1) {
+            cell.textContent = '❌';
+            cell.classList.add('x');
+          } else if (val === 2) {
+            cell.textContent = '⭕';
+            cell.classList.add('o');
+          }
+          
+          // Блокируем клетку если игра окончена или клетка занята
+          if (val === 0 && gameActive) {
+            cell.style.cursor = 'pointer';
+            cell.onclick = () => makeMove(row, col);
+          } else {
+            cell.style.cursor = 'not-allowed';
+          }
+          
+          container.appendChild(cell);
+        }
+      }
+    }
+
+    async function makeMove(row, col) {
+      if (!gameActive || board[row][col] !== 0) return;
+      
+      // Показываем свой ход СРАЗУ (для отзывчивости)
+      board[row][col] = mySymbol;
+      renderBoard();
+      updateStatus('Думаю...', '');
+      
+      try {
+        const response = await fetch(`${API_BASE}/game/${gameId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            id: gameId, 
+            board: { matrix: board, size: 3 } 
+          })
+        });
+        
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({}));
+          throw new Error(err.description || 'Ошибка сервера');
+        }
+        
+        const data = await response.json();
+        
+        // === ВАЖНО: Обновляем доску ТОЛЬКО из ответа сервера ===
+        board = data.board.matrix;
+        renderBoard();
+        
+        // Проверяем результат игры
+        checkGameResult();
+        
+      } catch (e) {
+        console.error(e);
+        updateStatus('❌ ' + e.message, 'error');
+        // Откат хода при ошибке
+        board[row][col] = 0;
+        renderBoard();
+      }
+    }
+
+    function checkGameResult() {
+      const winner = checkWinner();
+      const isDraw = checkDraw();
+      
+      if (winner === 1) {
+        updateStatus('🎉 Ты победил!', 'winner-text success');
+        highlightWinningCells(1);
+        gameActive = false;
+      } else if (winner === 2) {
+        updateStatus('😔 Компьютер выиграл', 'winner-text error');
+        highlightWinningCells(2);
+        gameActive = false;
+      } else if (isDraw) {
+        updateStatus('🏁 Ничья!', '');
+        gameActive = false;
+      } else {
+        updateStatus('Твой ход (❌)', 'success');
+      }
+    }
+
+    function checkWinner() {
+      // Все выигрышные комбинации
+      const lines = [
+        // Горизонтали
+        [[0,0], [0,1], [0,2]],
+        [[1,0], [1,1], [1,2]],
+        [[2,0], [2,1], [2,2]],
+        // Вертикали
+        [[0,0], [1,0], [2,0]],
+        [[0,1], [1,1], [2,1]],
+        [[0,2], [1,2], [2,2]],
+        // Диагонали
+        [[0,0], [1,1], [2,2]],
+        [[0,2], [1,1], [2,0]]
+      ];
+      
+      for (const line of lines) {
+        const [r1, c1] = line[0];
+        const [r2, c2] = line[1];
+        const [r3, c3] = line[2];
+        
+        if (board[r1][c1] !== 0 &&
+            board[r1][c1] === board[r2][c2] &&
+            board[r2][c2] === board[r3][c3]) {
+          return board[r1][c1]; // 1 или 2
+        }
+      }
+      
+      return 0; // нет победителя
+    }
+
+    function checkDraw() {
+      return board.flat().every(cell => cell !== 0);
+    }
+
+    function highlightWinningCells(winner) {
+      const lines = [
+        [[0,0], [0,1], [0,2]],
+        [[1,0], [1,1], [1,2]],
+        [[2,0], [2,1], [2,2]],
+        [[0,0], [1,0], [2,0]],
+        [[0,1], [1,1], [2,1]],
+        [[0,2], [1,2], [2,2]],
+        [[0,0], [1,1], [2,2]],
+        [[0,2], [1,1], [2,0]]
+      ];
+      
+      for (const line of lines) {
+        const [r1, c1] = line[0];
+        const [r2, c2] = line[1];
+        const [r3, c3] = line[2];
+        
+        if (board[r1][c1] === winner &&
+            board[r1][c1] === board[r2][c2] &&
+            board[r2][c2] === board[r3][c3]) {
+          // Подсвечиваем выигрышную линию
+          const cells = document.querySelectorAll('.cell');
+          cells[r1 * 3 + c1].classList.add('winner');
+          cells[r2 * 3 + c2].classList.add('winner');
+          cells[r3 * 3 + c3].classList.add('winner');
+          break;
+        }
+      }
+    }
+
+    function updateStatus(text, className) {
+      const el = document.getElementById('status');
+      el.textContent = text;
+      el.className = className || '';
+    }
+  </script>
+</body>
+</html>

@@ -219,7 +219,7 @@
         highlightWinningCells(2);
         gameActive = false;
       } else if (board.flat().every(cell => cell !== 0)) {
-        updateStatus('🏁 Ничья!', '');
+        updateStatus(' Ничья!', '');
         gameActive = false;
       } else {
         updateStatus('Твой ход (❌)', 'success');
